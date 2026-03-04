@@ -30,12 +30,7 @@ func LoadConfig() (Config, error) {
 	path := GetConfigPath()
 	b, err := os.ReadFile(path)
 	if err != nil {
-		// Try to migrate old config if new one doesn't exist
-		oldPath := filepath.Join(homedir.HomeDir(), ".k10s.json")
-		b, err = os.ReadFile(oldPath)
-		if err != nil {
-			return cfg, err
-		}
+		return cfg, err
 	}
 	err = json.Unmarshal(b, &cfg)
 	return cfg, err

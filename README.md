@@ -78,3 +78,5 @@ k10s --contexts dev-cluster,prod-cluster
 - **Windows:** `%AppData%\k10s\config.json`
 
 *(Note: The `k10s` engine still exclusively reads your standard `~/.kube/config` for cluster authentication.)*
+
+<img width="2550" height="1500" alt="image" src="https://github.com/user-attachments/assets/7551bdbd-3829-4fb1-9b61-1063a8362ddd" />

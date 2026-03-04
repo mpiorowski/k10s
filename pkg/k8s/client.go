@@ -35,6 +35,15 @@ type ClusterStatus struct {
 	PodsFailed     int
 	PodsPending    int
 	PodsTotal      int
+	PodsOOMKilled  int
+	RestartsTotal  int
+	DeploymentsTotal int
+	DeploymentsReady int
+	DeploymentsDegraded []string
+	StatefulSetsTotal int
+	StatefulSetsReady int
+	StatefulSetsDegraded []string
+	WarningEvents  []string
 	CpuUsage       int64 // in millicores
 	CpuCapacity    int64 // in millicores
 	MemUsage       int64 // in bytes
@@ -167,16 +176,78 @@ func (cm *ClientManager) FetchStatus(ctx context.Context, ctxName string, logFil
 				status.PodsFailed++
 			}
 			
-			// Check for CrashLoopBackOff or other waiting container issues
+			// Check container statuses for restarts, OOMKilled, etc
 			for _, cs := range pod.Status.ContainerStatuses {
+				status.RestartsTotal += int(cs.RestartCount)
+				
 				if cs.State.Waiting != nil && cs.State.Waiting.Reason == "CrashLoopBackOff" {
-					// We can consider this as failed/problematic for the high-level view
 					status.PodsFailed++
+				}
+				
+				// Check for OOMKilled in current or last termination state
+				if cs.State.Terminated != nil && cs.State.Terminated.Reason == "OOMKilled" {
+					status.PodsOOMKilled++
+				} else if cs.LastTerminationState.Terminated != nil && cs.LastTerminationState.Terminated.Reason == "OOMKilled" {
+					status.PodsOOMKilled++
 				}
 			}
 		}
 	} else if status.Error == nil { // Don't overwrite node error if it exists
 		status.Error = fmt.Errorf("pods failed: %v", err)
+	}
+
+	// Workloads: Deployments
+	deps, err := clientset.AppsV1().Deployments("").List(ctx, metav1.ListOptions{})
+	if err == nil {
+		status.DeploymentsTotal = len(deps.Items)
+		for _, d := range deps.Items {
+			expected := int32(1)
+			if d.Spec.Replicas != nil {
+				expected = *d.Spec.Replicas
+			}
+			if expected == 0 || d.Status.ReadyReplicas == expected {
+				status.DeploymentsReady++
+			} else {
+				status.DeploymentsDegraded = append(status.DeploymentsDegraded, fmt.Sprintf("%s/%s", d.Namespace, d.Name))
+			}
+		}
+	}
+	
+	// Workloads: StatefulSets
+	sts, err := clientset.AppsV1().StatefulSets("").List(ctx, metav1.ListOptions{})
+	if err == nil {
+		status.StatefulSetsTotal = len(sts.Items)
+		for _, s := range sts.Items {
+			expected := int32(1)
+			if s.Spec.Replicas != nil {
+				expected = *s.Spec.Replicas
+			}
+			if expected == 0 || s.Status.ReadyReplicas == expected {
+				status.StatefulSetsReady++
+			} else {
+				status.StatefulSetsDegraded = append(status.StatefulSetsDegraded, fmt.Sprintf("%s/%s", s.Namespace, s.Name))
+			}
+		}
+	}
+	
+	// Warning Events
+	events, err := clientset.CoreV1().Events("").List(ctx, metav1.ListOptions{FieldSelector: "type=Warning"})
+	if err == nil {
+		// Sort by creation or last timestamp descending
+		sort.Slice(events.Items, func(i, j int) bool {
+			return events.Items[i].LastTimestamp.Time.After(events.Items[j].LastTimestamp.Time)
+		})
+		
+		maxEvents := 3
+		for i, ev := range events.Items {
+			if i >= maxEvents {
+				break
+			}
+			// Only show events less than 1 hour old to keep it relevant
+			if time.Since(ev.LastTimestamp.Time) < time.Hour {
+				status.WarningEvents = append(status.WarningEvents, fmt.Sprintf("[%s] %s: %s", ev.Reason, ev.InvolvedObject.Name, ev.Message))
+			}
+		}
 	}
 
 	// 4. Fetch Metrics

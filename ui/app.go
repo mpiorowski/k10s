@@ -733,6 +733,49 @@ func (a *App) viewDashboard() string {
 			} else {
 				content += fmt.Sprintf("Failed:  %d\n", status.PodsFailed)
 			}
+			
+			if status.PodsOOMKilled > 0 {
+				content += errorStyle.Render(fmt.Sprintf("OOMKilled: %d", status.PodsOOMKilled)) + "\n"
+			}
+			if status.RestartsTotal > 0 {
+				content += warnStyle.Render(fmt.Sprintf("Restarts: %d", status.RestartsTotal)) + "\n"
+			}
+
+			// Workloads
+			content += "\n" + titleStyle.Render("Workloads") + "\n"
+			
+			depStr := fmt.Sprintf("Deployments:  %d / %d Ready", status.DeploymentsReady, status.DeploymentsTotal)
+			if status.DeploymentsReady < status.DeploymentsTotal {
+				content += warnStyle.Render(depStr) + "\n"
+				for _, d := range status.DeploymentsDegraded {
+					content += errorStyle.Render("  - " + d) + "\n"
+				}
+			} else {
+				content += okStyle.Render(depStr) + "\n"
+			}
+			
+			stsStr := fmt.Sprintf("StatefulSets: %d / %d Ready", status.StatefulSetsReady, status.StatefulSetsTotal)
+			if status.StatefulSetsReady < status.StatefulSetsTotal {
+				content += warnStyle.Render(stsStr) + "\n"
+				for _, s := range status.StatefulSetsDegraded {
+					content += errorStyle.Render("  - " + s) + "\n"
+				}
+			} else {
+				content += okStyle.Render(stsStr) + "\n"
+			}
+
+			// Warnings
+			if len(status.WarningEvents) > 0 {
+				content += "\n" + titleStyle.Render("Recent Warnings") + "\n"
+				for _, w := range status.WarningEvents {
+					// Truncate warning to fit width
+					maxLen := panelWidth - 4
+					if len(w) > maxLen && maxLen > 0 {
+						w = w[:maxLen-3] + "..."
+					}
+					content += warnStyle.Render(w) + "\n"
+				}
+			}
 
 			if a.showLogs {
 				content += "\n" + titleStyle.Render("Recent Logs")

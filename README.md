@@ -83,5 +83,5 @@ k10s --contexts dev-cluster,prod-cluster
 <img width="2550" height="1500" alt="image" src="https://github.com/user-attachments/assets/7551bdbd-3829-4fb1-9b61-1063a8362ddd" />
 <img width="1278" height="972" alt="image" src="https://github.com/user-attachments/assets/b7d7d5b6-22eb-4b95-9456-0dd298a6e47f" />
 <img width="799" height="584" alt="image" src="https://github.com/user-attachments/assets/915d2c4a-ccd3-425b-b5c8-ad164bd180fc" />
-
+<img width="1059" height="430" alt="image" src="https://github.com/user-attachments/assets/16be2aa1-dc91-418c-9d35-ec452b442cc1" />
 

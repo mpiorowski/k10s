@@ -437,10 +437,12 @@ func (a *App) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		sort.Strings(keys)
 		a.availableLogKeys = keys
 		return a, nil
+	case "i":
+		a.state = stateInfo
+		return a, nil
 	}
 	return a, nil
-}
-
+	}
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -602,6 +604,40 @@ func (a *App) viewLogSelection() string {
 	return fmt.Sprintf("\n  %s\n  %s\n\n%s\n", header, subHeader, body)
 }
 
+func (a *App) viewInfo() string {
+	header := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("86")).Render("k10s Legend & Help")
+	subHeader := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("Press 'i', 'ESC', or 'ENTER' to return to dashboard.")
+
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("62"))
+	keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
+	descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("250"))
+
+	sections := []string{
+		fmt.Sprintf("%s\n%s %s\n%s %s\n%s %s",
+			titleStyle.Render("Workload Metrics:"),
+			keyStyle.Render("Deps:"), descStyle.Render("Deployments (Ready / Total)"),
+			keyStyle.Render("STS: "), descStyle.Render("StatefulSets (Ready / Total)"),
+			keyStyle.Render("Pods:"), descStyle.Render("Total Pods (R:Running P:Pending F:Failed)"),
+		),
+		fmt.Sprintf("%s\n%s %s\n%s %s\n%s %s",
+			titleStyle.Render("Diagnostic Alerts:"),
+			keyStyle.Render("OOMKilled:"), descStyle.Render("Pods killed due to memory limits (Red alert)"),
+			keyStyle.Render("Restarts: "), descStyle.Render("Total container restarts (Yellow alert)"),
+			keyStyle.Render("Warnings: "), descStyle.Render("Recent cluster-level error events (last 1hr)"),
+		),
+		fmt.Sprintf("%s\n%s %s\n%s %s\n%s %s\n%s %s",
+			titleStyle.Render("Keyboard Shortcuts:"),
+			keyStyle.Render("1-9:"), descStyle.Render("Focus (full-screen) a specific cluster"),
+			keyStyle.Render("l:  "), descStyle.Render("Toggle logs / Select deployment filters"),
+			keyStyle.Render("e:  "), descStyle.Render("Toggle 'Errors Only' log filter"),
+			keyStyle.Render("p:  "), descStyle.Render("Parse JSON keys (Available in Focused view)"),
+		),
+	}
+
+	body := lipgloss.NewStyle().PaddingLeft(2).Render(lipgloss.JoinVertical(lipgloss.Left, sections...))
+	return fmt.Sprintf("\n  %s\n  %s\n\n%s\n", header, subHeader, body)
+}
+
 func (a *App) viewLogKeyParse() string {
 	header := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("86")).Render("Select JSON Keys to Display in Logs")
 	subHeader := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("Use UP/DOWN to navigate, SPACE to select, ENTER to confirm. (ESC to cancel)")
@@ -642,9 +678,9 @@ func (a *App) viewDashboard() string {
 		return fmt.Sprintf("Error initializing K8s clients:\n%v\n\nPress 'q' to quit", a.initErr)
 	}
 
-	headerStr := fmt.Sprintf("Monitoring %d Clusters | 1-%d focus | 's' cls | 'l' logs | 'e' err | 'q' quit", len(a.contexts), len(a.contexts))
+	headerStr := fmt.Sprintf("Monitoring %d Clusters | 1-%d focus | 's' cls | 'l' logs | 'e' err | 'i' info | 'q' quit", len(a.contexts), len(a.contexts))
 	if a.focusedIdx != -1 {
-		headerStr = fmt.Sprintf("Focused on: %s | %d un-focus | 's' cls | 'l' logs | 'e' err | 'p' parse | 'q' quit", a.contexts[a.focusedIdx], a.focusedIdx+1)
+		headerStr = fmt.Sprintf("Focused on: %s | %d un-focus | 's' cls | 'l' logs | 'e' err | 'p' parse | 'i' info | 'q' quit", a.contexts[a.focusedIdx], a.focusedIdx+1)
 	}
 	header := lipgloss.NewStyle().Bold(true).Padding(0, 1).Background(lipgloss.Color("62")).Foreground(lipgloss.Color("230")).Render(headerStr)
 
@@ -862,6 +898,9 @@ func (a *App) View() string {
 	}
 	if a.state == stateLogKeyParse {
 		return a.viewLogKeyParse()
+	}
+	if a.state == stateInfo {
+		return a.viewInfo()
 	}
 	return a.viewDashboard()
 }

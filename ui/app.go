@@ -53,6 +53,7 @@ type App struct {
 
 	showLogs       bool
 	logsOnlyErrors bool
+	logsOnlyWarns  bool
 
 	// Selection state
 	allContexts []string
@@ -101,6 +102,7 @@ func NewApp(initialContexts []string) *App {
 	if err == nil {
 		app.showLogs = cfg.ShowLogs
 		app.logsOnlyErrors = cfg.LogsOnlyErrors
+		app.logsOnlyWarns = cfg.LogsOnlyWarns
 		app.activeLogFilters = cfg.SelectedLogFilters
 		if cfg.SelectedLogKeys != nil {
 			app.activeLogKeys = cfg.SelectedLogKeys
@@ -209,6 +211,7 @@ func (a *App) saveConfig() {
 		SelectedLogKeys:    a.activeLogKeys,
 		ShowLogs:           a.showLogs,
 		LogsOnlyErrors:     a.logsOnlyErrors,
+		LogsOnlyWarns:      a.logsOnlyWarns,
 	}
 	_ = config.SaveConfig(cfg)
 }
@@ -397,6 +400,10 @@ func (a *App) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a, fetchDeployments(a.manager, a.contexts)
 	case "e":
 		a.logsOnlyErrors = !a.logsOnlyErrors
+		a.saveConfig()
+		return a, nil
+	case "w":
+		a.logsOnlyWarns = !a.logsOnlyWarns
 		a.saveConfig()
 		return a, nil
 	case "p":
@@ -653,11 +660,12 @@ func (a *App) viewInfo() string {
 			keyStyle.Render("Restarts: "), descStyle.Render("Total container restarts (Yellow alert)"),
 			keyStyle.Render("Warnings: "), descStyle.Render("Recent cluster-level error events (last 1hr)"),
 		),
-		fmt.Sprintf("%s\n%s %s\n%s %s\n%s %s\n%s %s",
+		fmt.Sprintf("%s\n%s %s\n%s %s\n%s %s\n%s %s\n%s %s",
 			titleStyle.Render("Keyboard Shortcuts:"),
 			keyStyle.Render("1-9:"), descStyle.Render("Focus (full-screen) a specific cluster"),
 			keyStyle.Render("l:  "), descStyle.Render("Toggle logs / Select deployment filters"),
 			keyStyle.Render("e:  "), descStyle.Render("Toggle 'Errors Only' log filter"),
+			keyStyle.Render("w:  "), descStyle.Render("Toggle 'Warns Only' log filter"),
 			keyStyle.Render("p:  "), descStyle.Render("Parse JSON keys (Available in Focused view)"),
 		),
 	}
@@ -707,9 +715,9 @@ func (a *App) viewDashboard() string {
 		return fmt.Sprintf("Error initializing K8s clients:\n%v\n\nPress 'q' to quit", a.initErr)
 	}
 
-	headerStr := fmt.Sprintf("Monitoring %d Clusters | 1-%d focus | 's' cls | 'l' logs | 'e' err | 'i' info | 'q' quit", len(a.contexts), len(a.contexts))
+	headerStr := fmt.Sprintf("Monitoring %d Clusters | 1-%d focus | 's' cls | 'l' logs | 'e' err | 'w' warn | 'i' info | 'q' quit", len(a.contexts), len(a.contexts))
 	if a.focusedIdx != -1 {
-		headerStr = fmt.Sprintf("Focused on: %s | %d un-focus | 's' cls | 'l' logs | 'e' err | 'p' parse | 'i' info | 'q' quit", a.contexts[a.focusedIdx], a.focusedIdx+1)
+		headerStr = fmt.Sprintf("Focused on: %s | %d un-focus | 's' cls | 'l' logs | 'e' err | 'w' warn | 'p' parse | 'i' info | 'q' quit", a.contexts[a.focusedIdx], a.focusedIdx+1)
 	}
 	header := lipgloss.NewStyle().Bold(true).Padding(0, 1).Background(lipgloss.Color("62")).Foreground(lipgloss.Color("230")).Render(headerStr)
 
@@ -876,31 +884,42 @@ func (a *App) viewDashboard() string {
 
 			if a.showLogs {
 				content += titleStyle.Render("Logs")
-				if a.logsOnlyErrors {
+				if a.logsOnlyErrors && a.logsOnlyWarns {
+					content += titleStyle.Render(" (Errors & Warns Only)")
+				} else if a.logsOnlyErrors {
 					content += titleStyle.Render(" (Errors Only)")
+				} else if a.logsOnlyWarns {
+					content += titleStyle.Render(" (Warns Only)")
 				}
 				content += "\n"
 
 				var renderedLogs []string
 				for _, log := range status.RecentLogs {
-					if a.logsOnlyErrors && !log.IsError {
+					if a.logsOnlyErrors && !a.logsOnlyWarns && !log.IsError {
 						continue
 					}
-					
+					if a.logsOnlyWarns && !a.logsOnlyErrors && !log.IsWarn {
+						continue
+					}
+					if a.logsOnlyErrors && a.logsOnlyWarns && !log.IsError && !log.IsWarn {
+						continue
+					}
+
 					logStr := fmt.Sprintf("[%s] %s", log.PodName, log.Message)
 					// Truncate to avoid wrapping breaking the layout too badly
 					maxLen := panelWidth - 4
 					if len(logStr) > maxLen && maxLen > 0 {
 						logStr = logStr[:maxLen-3] + "..."
 					}
-					
+
 					if log.IsError {
 						renderedLogs = append(renderedLogs, errorStyle.Render(logStr))
+					} else if log.IsWarn {
+						renderedLogs = append(renderedLogs, warnStyle.Render(logStr))
 					} else {
 						renderedLogs = append(renderedLogs, lipgloss.NewStyle().Foreground(lipgloss.Color("246")).Render(logStr))
 					}
 				}
-
 				if len(renderedLogs) == 0 {
 					content += "No matching logs found.\n"
 				} else {

@@ -14,6 +14,7 @@ type Config struct {
 	SelectedLogKeys    map[string][]string `json:"selected_log_keys"`
 	ShowLogs           bool                `json:"show_logs"`
 	LogsOnlyErrors     bool                `json:"logs_only_errors"`
+	LogsOnlyWarns      bool                `json:"logs_only_warns"`
 }
 
 func GetConfigPath() string {

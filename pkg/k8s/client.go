@@ -22,6 +22,7 @@ type LogEntry struct {
 	Message    string
 	RawMessage string
 	IsError    bool
+	IsWarn     bool
 	Timestamp  time.Time
 }
 
@@ -320,16 +321,39 @@ func (cm *ClientManager) FetchStatus(ctx context.Context, ctxName string, logFil
 							}
 						}
 
+						// Naive text matching as a baseline fallback
 						isErr := strings.Contains(strings.ToLower(line), "error") ||
 								 strings.Contains(strings.ToLower(line), "err") ||
 								 strings.Contains(strings.ToLower(line), "fail") ||
 								 strings.Contains(strings.ToLower(line), "exception")
+
+						isWarn := !isErr && (strings.Contains(strings.ToLower(line), "warn") ||
+								  strings.Contains(strings.ToLower(line), "warning"))
 
 						// Naive JSON parsing for structured logs
 						displayMsg := line
 						if len(jsonKeys) > 0 && strings.HasPrefix(line, "{") && strings.HasSuffix(line, "}") {
 							var jsonLog map[string]interface{}
 							if err := json.Unmarshal([]byte(line), &jsonLog); err == nil {
+								// If the log has a "level" key in the JSON itself, use it to definitively override the naive text match
+								for k, v := range jsonLog {
+									if strings.ToLower(k) == "level" {
+										valStr := strings.ToLower(fmt.Sprintf("%v", v))
+										if valStr == "error" || valStr == "fatal" {
+											isErr = true
+											isWarn = false
+										} else if valStr == "warn" || valStr == "warning" {
+											isWarn = true
+											isErr = false
+										} else {
+											// If the level is info, debug, etc, it is NOT an error or warning
+											isErr = false
+											isWarn = false
+										}
+										break
+									}
+								}
+
 								var jsonParts []string
 								for _, k := range jsonKeys {
 									if val, ok := jsonLog[k]; ok {
@@ -340,11 +364,6 @@ func (cm *ClientManager) FetchStatus(ctx context.Context, ctxName string, logFil
 											jsonParts = append(jsonParts, fmt.Sprintf("%s=\"%s\"", k, valStr))
 										} else {
 											jsonParts = append(jsonParts, fmt.Sprintf("%s=%s", k, valStr))
-										}
-
-										// Sneakily check level for error highlighting
-										if strings.ToLower(k) == "level" && (strings.ToLower(valStr) == "error" || strings.ToLower(valStr) == "fatal") {
-											isErr = true
 										}
 									}
 								}
@@ -359,6 +378,7 @@ func (cm *ClientManager) FetchStatus(ctx context.Context, ctxName string, logFil
 							Message:    displayMsg,
 							RawMessage: line,
 							IsError:    isErr,
+							IsWarn:     isWarn,
 							Timestamp:  logTime,
 						})
 					}

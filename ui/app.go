@@ -718,7 +718,19 @@ func (a *App) viewDashboard() string {
 		if !exists {
 			content += "Fetching data..."
 		} else if status.Error != nil {
-			content += errorStyle.Render(fmt.Sprintf("Error:\n%v", status.Error))
+			errStr := fmt.Sprintf("Error:\n%v", status.Error)
+			// Truncate or wrap error so it doesn't break layout
+			lines := strings.Split(errStr, "\n")
+			for _, line := range lines {
+				if len(line) > panelWidth-4 && panelWidth > 4 {
+					// Hard wrap the line
+					for len(line) > panelWidth-4 {
+						content += errorStyle.Render(line[:panelWidth-4]) + "\n"
+						line = line[panelWidth-4:]
+					}
+				}
+				content += errorStyle.Render(line) + "\n"
+			}
 		} else {
 			// Row 1: Version & Update Time
 			content += fmt.Sprintf("Ver: %s | Upd: %s\n", status.Version, status.LastUpdate.Format("15:04:05"))

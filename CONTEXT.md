@@ -37,12 +37,18 @@ The TUI operates a state machine with 4 distinct views (`viewState`):
    - Triggered by pressing `p` (only available when a specific cluster is "Focused").
    - Scans the currently buffered log lines for that specific cluster, discovers all available JSON keys, and allows the user to select which keys to render in a `key=value` format.
    - Selections are stored on a *per-cluster* basis.
+5. **`stateInfo` (Legend & Help):**
+   - Triggered by pressing `i`.
+   - Displays a static overlay explaining the highly condensed dashboard acronyms (Deps, STS, R/P/F pod codes) and diagnostic triggers (OOMKilled, Restarts, Warnings) alongside a keyboard shortcut reference.
 
 ## Data Fetching Engine (`pkg/k8s`)
 The `ClientManager` is designed to be highly concurrent and respectful of the Kubernetes API to avoid rate-limiting or causing high load:
 
 - **Polling:** The Bubble Tea `tick()` command triggers a background refresh for all active clusters every 5 seconds.
 - **Metrics Fetching:** Uses parallel Go routines to fetch Node Readiness, Pod Phase aggregations (Running/Pending/Failed), and CPU/Memory capacities and usages.
+- **Diagnostic Fetching:** Inspects `ContainerStatuses` for `OOMKilled` termination codes and total `RestartCount`.
+- **Workload Fetching:** Compares expected `Replicas` against `ReadyReplicas` for `Deployments` and `StatefulSets` to identify and list degraded applications.
+- **Event Fetching:** Filters the `CoreV1().Events` stream for `type=Warning` within the last hour to surface critical cluster alarms (e.g. FailedScheduling).
 - **Log Fetching (Optimized):**
   - Only fetches logs for pods whose names match the user's selected deployment filters.
   - Limits API calls to a maximum of 20 pods per refresh cycle.
@@ -55,6 +61,8 @@ The `ClientManager` is designed to be highly concurrent and respectful of the Ku
   - Automatically upgrades a log line to an "Error" state (highlighted in red) if the word "error" appears, or if the parsed JSON contains `"level": "error"`.
 
 ## Styling & Layout Mechanics
+- **Smart Condensation:** The dashboard is designed to maximize vertical space for logs. Static health data (Version, Nodes, CPU) is heavily condensed into single rows using pipes (`|`). 
+- **Reactive Alerting:** Diagnostic fields (Degraded workloads, OOMKilled counts, Restarts, and Warning Events) consume zero vertical lines on the dashboard when a cluster is perfectly healthy. They only pop into the layout when a non-zero/failing state is detected.
 - **Semantic Colors:**
   - **Green:** Healthy nodes, Running pods, CPU/Mem < 75%.
   - **Yellow:** Pending pods, CPU/Mem > 75% (Warning).

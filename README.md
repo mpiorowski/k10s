@@ -9,10 +9,12 @@ A fast, concurrent, and highly functional multi-cluster Kubernetes terminal dash
 - **Multi-Cluster Support out of the box:** Select any number of contexts from your `~/.kube/config` and monitor them side-by-side.
 - **Dynamic Split-Pane Layout:** Automatically adjusts and splits your terminal screen depending on how many clusters you are monitoring.
 - **Focus Mode:** Jump into a specific cluster (full screen) using the number keys (1-9) for a detailed view.
-- **Aggregated Health Metrics:**
-  - Node readiness and counts.
-  - Pod lifecycle states (Running, Pending, Failed/CrashLoopBackOff).
-  - High-level CPU & Memory resource usage (if `metrics-server` is deployed on the cluster).
+- **Aggregated Health Metrics & Diagnostics:**
+  - Node readiness, CPU, and Memory resource usage (via `metrics-server`).
+  - Workload readiness for Deployments and StatefulSets (instantly flags degraded apps).
+  - Pod lifecycle summary (Running, Pending, Failed).
+  - **Proactive Alerts:** Automatically detects and surfaces `OOMKilled` pods, high container `Restarts`, and recent cluster-level `Warning` events (e.g. scheduling failures) directly on the dashboard.
+- **Smart Space Management:** The UI is heavily condensed. Critical errors and warnings take up zero screen space when healthy, only popping into the layout when a problem is detected, maximizing vertical space for your logs.
 - **Smart Concurrent Polling:** Uses Go routines to hit the Kubernetes API concurrently and asynchronously; a slow cluster will never block the UI for a fast cluster.
 - **Advanced Log Engine:**
   - Filter logs to specific Deployments across your clusters to minimize noise.
@@ -54,6 +56,7 @@ k10s --contexts dev-cluster,prod-cluster
 ### Global Navigation
 *   **`s` or `c`**: Re-open the cluster selection menu.
 *   **`1-9`**: Focus (full screen) on a specific cluster panel. Press the same number again to un-focus and return to the split multi-cluster view.
+*   **`i`**: Open the interactive Legend/Info screen to see what the condensed metrics and acronyms mean.
 *   **`q` or `ctrl+c`**: Quit the application.
 
 ### Log Management

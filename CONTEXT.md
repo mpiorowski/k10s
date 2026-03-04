@@ -58,7 +58,7 @@ The `ClientManager` is designed to be highly concurrent and respectful of the Ku
 - **Smart JSON Parser:**
   - If a log line is raw text, it passes it through.
   - If a log line is structured JSON, it intercepts it, parses the object, and dynamically re-formats the output string based on the user's selected keys (configured via the `p` menu).
-  - Automatically upgrades a log line to an "Error" state (highlighted in red) if the word "error" appears, or if the parsed JSON contains `"level": "error"`.
+  - Automatically upgrades a log line to an "Error" state (highlighted in red) or "Warn" state (highlighted in yellow) based on the parsed JSON `"level"` key. If no JSON level is found, it falls back to a naive text search for words like "error", "fail", or "warn".
 
 ## Styling & Layout Mechanics
 - **Smart Condensation:** The dashboard is designed to maximize vertical space for logs. Static health data (Version, Nodes, CPU) is heavily condensed into single rows using pipes (`|`). 

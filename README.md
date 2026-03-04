@@ -68,6 +68,8 @@ k10s --contexts dev-cluster,prod-cluster
 *   **`l` (Logs)**: Toggle the Recent Logs view.
     *   *Note: Pressing `l` for the first time will open the Deployment Selection screen. You must check which deployments you want to watch before logs will appear.*
 *   **`e` (Errors Only)**: Toggle the log filter. When active, it will strictly hide all log lines unless they contain an error-related word (e.g., `error`, `err`, `fail`, `exception`) or have a JSON log level of `error`/`fatal`.
+*   **`w` (Warns Only)**: Toggle the log filter. When active, it will strictly hide all log lines unless they contain a warning-related word (e.g., `warn`, `warning`) or have a JSON log level of `warn`/`warning`.
+    *   *Note: You can activate both `e` and `w` simultaneously to see only errors and warnings, filtering out all standard info/debug logs.*
 *   **`p` (Parse JSON)**: *Available only when a specific cluster is Focused (e.g., by pressing `1`).* Opens the JSON key extraction menu for that specific cluster.
 
 ## Configuration Directory

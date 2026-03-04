@@ -47,6 +47,7 @@ The `ClientManager` is designed to be highly concurrent and respectful of the Ku
   - Only fetches logs for pods whose names match the user's selected deployment filters.
   - Limits API calls to a maximum of 20 pods per refresh cycle.
   - Uses `TailLines: 40` to quickly grab the end of the log stream.
+  - **Chronological Aggregation:** Explicitly requests API timestamps, parses them, and sorts all interleaved pod logs chronologically before rendering.
   - Maintains an in-memory rolling buffer of the last 100 log lines per cluster.
 - **Smart JSON Parser:**
   - If a log line is raw text, it passes it through.

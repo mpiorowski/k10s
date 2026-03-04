@@ -522,8 +522,8 @@ func (a *App) viewSelection() string {
 		rows = append(rows, lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Render("No clusters found in kubeconfig."))
 	}
 
-	body := lipgloss.JoinVertical(lipgloss.Left, rows...)
-	return fmt.Sprintf("\n  %s\n  %s\n\n  %s\n", header, subHeader, body)
+	body := lipgloss.NewStyle().PaddingLeft(2).Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+	return fmt.Sprintf("\n  %s\n  %s\n\n%s\n", header, subHeader, body)
 }
 
 func (a *App) viewLogSelection() string {
@@ -592,8 +592,8 @@ func (a *App) viewLogSelection() string {
 		}
 	}
 
-	body := lipgloss.JoinVertical(lipgloss.Left, rows...)
-	return fmt.Sprintf("\n  %s\n  %s\n\n  %s\n", header, subHeader, body)
+	body := lipgloss.NewStyle().PaddingLeft(2).Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+	return fmt.Sprintf("\n  %s\n  %s\n\n%s\n", header, subHeader, body)
 }
 
 func (a *App) viewLogKeyParse() string {
@@ -627,8 +627,8 @@ func (a *App) viewLogKeyParse() string {
 		}
 	}
 
-	body := lipgloss.JoinVertical(lipgloss.Left, rows...)
-	return fmt.Sprintf("\n  %s\n  %s\n\n  %s\n", header, subHeader, body)
+	body := lipgloss.NewStyle().PaddingLeft(2).Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+	return fmt.Sprintf("\n  %s\n  %s\n\n%s\n", header, subHeader, body)
 }
 
 func (a *App) viewDashboard() string {

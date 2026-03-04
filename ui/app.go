@@ -25,6 +25,7 @@ const (
 	stateSelection
 	stateLogSelection
 	stateLogKeyParse
+	stateInfo
 )
 
 type tickMsg time.Time
@@ -454,6 +455,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a.updateLogSelection(msg)
 		} else if a.state == stateLogKeyParse {
 			return a.updateLogKeyParse(msg)
+		} else if a.state == stateInfo {
+			if msg.String() == "i" || msg.String() == "esc" || msg.String() == "enter" {
+				a.state = stateDashboard
+			}
+			return a, nil
 		} else {
 			return a.updateDashboard(msg)
 		}
@@ -678,97 +684,111 @@ func (a *App) viewDashboard() string {
 		} else if status.Error != nil {
 			content += errorStyle.Render(fmt.Sprintf("Error:\n%v", status.Error))
 		} else {
-			content += fmt.Sprintf("Version: %s\n", status.Version)
-			content += fmt.Sprintf("Last Update: %s\n\n", status.LastUpdate.Format("15:04:05"))
+			// Row 1: Version & Update Time
+			content += fmt.Sprintf("Ver: %s | Upd: %s\n", status.Version, status.LastUpdate.Format("15:04:05"))
 
-			nodeStr := fmt.Sprintf("Nodes: %d / %d Ready", status.NodesReady, status.NodesTotal)
+			// Row 2: Nodes & Resources
+			nodeStr := fmt.Sprintf("Nodes: %d/%d", status.NodesReady, status.NodesTotal)
 			if status.NodesReady < status.NodesTotal {
-				content += warnStyle.Render(nodeStr) + "\n"
+				nodeStr = warnStyle.Render(nodeStr)
 			} else {
-				content += okStyle.Render(nodeStr) + "\n"
+				nodeStr = okStyle.Render(nodeStr)
 			}
-
+			
+			resStr := ""
 			if status.CpuCapacity > 0 {
 				cpuPct := float64(status.CpuUsage) / float64(status.CpuCapacity) * 100
-				cpuStr := fmt.Sprintf("CPU:   %.1f%% (%d/%dm)", cpuPct, status.CpuUsage, status.CpuCapacity)
+				cpuStr := fmt.Sprintf("CPU: %.0f%%", cpuPct)
 				if cpuPct > 90 {
-					content += errorStyle.Render(cpuStr) + "\n"
+					cpuStr = errorStyle.Render(cpuStr)
 				} else if cpuPct > 75 {
-					content += warnStyle.Render(cpuStr) + "\n"
+					cpuStr = warnStyle.Render(cpuStr)
 				} else {
-					content += okStyle.Render(cpuStr) + "\n"
+					cpuStr = okStyle.Render(cpuStr)
 				}
+				resStr += " | " + cpuStr
 			}
 			if status.MemCapacity > 0 {
 				memPct := float64(status.MemUsage) / float64(status.MemCapacity) * 100
-				memUsageGi := float64(status.MemUsage) / (1024 * 1024 * 1024)
-				memCapGi := float64(status.MemCapacity) / (1024 * 1024 * 1024)
-				memStr := fmt.Sprintf("Mem:   %.1f%% (%.1f/%.1fGi)", memPct, memUsageGi, memCapGi)
+				memStr := fmt.Sprintf("Mem: %.0f%%", memPct)
 				if memPct > 90 {
-					content += errorStyle.Render(memStr) + "\n"
+					memStr = errorStyle.Render(memStr)
 				} else if memPct > 75 {
-					content += warnStyle.Render(memStr) + "\n"
+					memStr = warnStyle.Render(memStr)
 				} else {
-					content += okStyle.Render(memStr) + "\n"
+					memStr = okStyle.Render(memStr)
 				}
+				resStr += " | " + memStr
 			}
+			content += nodeStr + resStr + "\n"
 
-			content += "\n" + titleStyle.Render("Pods") + "\n"
-			content += fmt.Sprintf("Total:   %d\n", status.PodsTotal)
-
-			if status.PodsRunning > 0 {
-				content += okStyle.Render(fmt.Sprintf("Running: %d", status.PodsRunning)) + "\n"
-			} else {
-				content += fmt.Sprintf("Running: %d\n", status.PodsRunning)
-			}
-
-			if status.PodsPending > 0 {
-				content += warnStyle.Render(fmt.Sprintf("Pending: %d", status.PodsPending)) + "\n"
-			} else {
-				content += fmt.Sprintf("Pending: %d\n", status.PodsPending)
-			}
-
-			if status.PodsFailed > 0 {
-				content += errorStyle.Render(fmt.Sprintf("Failed/CrashLoop: %d", status.PodsFailed)) + "\n"
-			} else {
-				content += fmt.Sprintf("Failed:  %d\n", status.PodsFailed)
-			}
-			
-			if status.PodsOOMKilled > 0 {
-				content += errorStyle.Render(fmt.Sprintf("OOMKilled: %d", status.PodsOOMKilled)) + "\n"
-			}
-			if status.RestartsTotal > 0 {
-				content += warnStyle.Render(fmt.Sprintf("Restarts: %d", status.RestartsTotal)) + "\n"
-			}
-
-			// Workloads
-			content += "\n" + titleStyle.Render("Workloads") + "\n"
-			
-			depStr := fmt.Sprintf("Deployments:  %d / %d Ready", status.DeploymentsReady, status.DeploymentsTotal)
+			// Row 3: Workloads
+			depStr := fmt.Sprintf("Deps: %d/%d", status.DeploymentsReady, status.DeploymentsTotal)
 			if status.DeploymentsReady < status.DeploymentsTotal {
-				content += warnStyle.Render(depStr) + "\n"
-				for _, d := range status.DeploymentsDegraded {
-					content += errorStyle.Render("  - " + d) + "\n"
-				}
+				depStr = warnStyle.Render(depStr)
 			} else {
-				content += okStyle.Render(depStr) + "\n"
+				depStr = okStyle.Render(depStr)
 			}
 			
-			stsStr := fmt.Sprintf("StatefulSets: %d / %d Ready", status.StatefulSetsReady, status.StatefulSetsTotal)
+			stsStr := fmt.Sprintf("STS: %d/%d", status.StatefulSetsReady, status.StatefulSetsTotal)
 			if status.StatefulSetsReady < status.StatefulSetsTotal {
-				content += warnStyle.Render(stsStr) + "\n"
-				for _, s := range status.StatefulSetsDegraded {
-					content += errorStyle.Render("  - " + s) + "\n"
-				}
+				stsStr = warnStyle.Render(stsStr)
 			} else {
-				content += okStyle.Render(stsStr) + "\n"
+				stsStr = okStyle.Render(stsStr)
+			}
+			content += depStr + " | " + stsStr + "\n"
+
+			// Show degraded workloads only if there are any
+			if status.DeploymentsReady < status.DeploymentsTotal {
+				for _, d := range status.DeploymentsDegraded {
+					content += errorStyle.Render("  ! " + d) + "\n"
+				}
+			}
+			if status.StatefulSetsReady < status.StatefulSetsTotal {
+				for _, s := range status.StatefulSetsDegraded {
+					content += errorStyle.Render("  ! " + s) + "\n"
+				}
 			}
 
-			// Warnings
+			// Row 4: Pods Summary
+			podStr := fmt.Sprintf("Pods: %d (", status.PodsTotal)
+			
+			if status.PodsRunning > 0 {
+				podStr += okStyle.Render(fmt.Sprintf("R:%d ", status.PodsRunning))
+			} else {
+				podStr += fmt.Sprintf("R:%d ", status.PodsRunning)
+			}
+			
+			if status.PodsPending > 0 {
+				podStr += warnStyle.Render(fmt.Sprintf("P:%d ", status.PodsPending))
+			} else {
+				podStr += fmt.Sprintf("P:%d ", status.PodsPending)
+			}
+			
+			if status.PodsFailed > 0 {
+				podStr += errorStyle.Render(fmt.Sprintf("F:%d", status.PodsFailed))
+			} else {
+				podStr += fmt.Sprintf("F:%d", status.PodsFailed)
+			}
+			podStr += ")"
+			content += podStr + "\n"
+			
+			// Critical Pod Errors (Only shown if non-zero)
+			if status.PodsOOMKilled > 0 || status.RestartsTotal > 0 {
+				errStr := ""
+				if status.PodsOOMKilled > 0 {
+					errStr += errorStyle.Render(fmt.Sprintf("OOMKilled: %d ", status.PodsOOMKilled))
+				}
+				if status.RestartsTotal > 0 {
+					errStr += warnStyle.Render(fmt.Sprintf("Restarts: %d", status.RestartsTotal))
+				}
+				content += errStr + "\n"
+			}
+
+			// Warnings (Only shown if present)
 			if len(status.WarningEvents) > 0 {
-				content += "\n" + titleStyle.Render("Recent Warnings") + "\n"
+				content += titleStyle.Render("Warnings:") + "\n"
 				for _, w := range status.WarningEvents {
-					// Truncate warning to fit width
 					maxLen := panelWidth - 4
 					if len(w) > maxLen && maxLen > 0 {
 						w = w[:maxLen-3] + "..."
@@ -778,7 +798,7 @@ func (a *App) viewDashboard() string {
 			}
 
 			if a.showLogs {
-				content += "\n" + titleStyle.Render("Recent Logs")
+				content += titleStyle.Render("Logs")
 				if a.logsOnlyErrors {
 					content += titleStyle.Render(" (Errors Only)")
 				}

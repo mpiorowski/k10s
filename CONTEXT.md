@@ -14,7 +14,7 @@
 ## Project Structure
 - `main.go`: The entry point that executes the Cobra root command.
 - `cmd/root.go`: Defines the CLI flags and initializes the Bubble Tea application (`ui.NewApp()`).
-- `pkg/config/config.go`: Handles saving and loading the user's persistent preferences (selected clusters, log filters, JSON keys) to `~/.k10s.json`.
+- `pkg/config/config.go`: Handles saving and loading the user's persistent preferences (selected clusters, log filters, JSON keys) to the OS standard user config directory (e.g., `~/.config/k10s/config.json`).
 - `pkg/k8s/client.go`: The core Kubernetes interaction engine. Contains the `ClientManager` which handles concurrent API fetching, pod log streaming, and dynamic JSON log parsing.
 - `ui/app.go`: The Bubble Tea application logic. Manages the state machine (Selection Menu vs Dashboard vs Log Menus), keyboard event handlers, and the dynamic rendering of the Lipgloss split-pane layout.
 
@@ -24,7 +24,7 @@ The TUI operates a state machine with 4 distinct views (`viewState`):
 1. **`stateSelection` (Cluster Selection):**
    - Triggered on first run or by pressing `s`.
    - Parses all available contexts from `~/.kube/config`.
-   - Renders an interactive checklist. Selections are saved to `~/.k10s.json`.
+   - Renders an interactive checklist. Selections are saved to the OS standard user config directory.
 2. **`stateDashboard` (Main Multi-Cluster View):**
    - The primary monitoring layout.
    - Calculates available terminal width/height and dynamically splits the screen into `N` vertical panels based on the number of selected clusters.

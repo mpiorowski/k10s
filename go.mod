@@ -1,4 +1,4 @@
-module k10s
+module github.com/mpiorowski/k10s
 
 go 1.25.4
 

@@ -25,9 +25,14 @@ A fast, concurrent, and highly functional multi-cluster Kubernetes terminal dash
 
 ## Installation
 
-### From Source
-Ensure you have Go 1.25+ installed.
+### Via Go Install (Recommended)
+If you have Go 1.25+ installed, you can install the latest version directly to your `$GOPATH/bin`:
 
+```bash
+go install github.com/mpiorowski/k10s@latest
+```
+
+### From Source
 ```bash
 git clone https://github.com/mpiorowski/k10s.git
 cd k10s

@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 
-	"k10s/cmd"
+	"github.com/mpiorowski/k10s/cmd"
 	"k8s.io/klog/v2"
 )
 

@@ -6,8 +6,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
-	"k10s/pkg/config"
-	"k10s/ui"
+	"github.com/mpiorowski/k10s/pkg/config"
+	"github.com/mpiorowski/k10s/ui"
 )
 
 var contextsFlag string

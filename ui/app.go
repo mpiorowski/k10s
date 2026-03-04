@@ -14,8 +14,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"k8s.io/client-go/util/homedir"
 
-	"k10s/pkg/config"
-	"k10s/pkg/k8s"
+	"github.com/mpiorowski/k10s/pkg/config"
+	"github.com/mpiorowski/k10s/pkg/k8s"
 )
 
 type viewState int

@@ -500,6 +500,32 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
+func paginateRows(rows []string, cursor int, maxHeight int) []string {
+	if len(rows) <= maxHeight || maxHeight <= 0 {
+		return rows
+	}
+
+	startIdx := cursor - maxHeight/2
+	if startIdx < 0 {
+		startIdx = 0
+	}
+	if startIdx+maxHeight > len(rows) {
+		startIdx = len(rows) - maxHeight
+	}
+
+	visibleRows := make([]string, maxHeight)
+	copy(visibleRows, rows[startIdx:startIdx+maxHeight])
+
+	if startIdx > 0 {
+		visibleRows[0] = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("  ↑ more...")
+	}
+	if startIdx+maxHeight < len(rows) {
+		visibleRows[len(visibleRows)-1] = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("  ↓ more...")
+	}
+
+	return visibleRows
+}
+
 func (a *App) viewSelection() string {
 	header := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("86")).Render("Select Kubernetes Clusters to Monitor")
 	subHeader := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("Use UP/DOWN to navigate, SPACE to select, ENTER to confirm. (ESC to cancel)")
@@ -530,7 +556,8 @@ func (a *App) viewSelection() string {
 		rows = append(rows, lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Render("No clusters found in kubeconfig."))
 	}
 
-	body := lipgloss.NewStyle().PaddingLeft(2).Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+	visibleRows := paginateRows(rows, a.cursor, a.height-8)
+	body := lipgloss.NewStyle().PaddingLeft(2).Render(lipgloss.JoinVertical(lipgloss.Left, visibleRows...))
 	return fmt.Sprintf("\n  %s\n  %s\n\n%s\n", header, subHeader, body)
 }
 
@@ -600,7 +627,8 @@ func (a *App) viewLogSelection() string {
 		}
 	}
 
-	body := lipgloss.NewStyle().PaddingLeft(2).Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+	visibleRows := paginateRows(rows, a.logCursor, a.height-8)
+	body := lipgloss.NewStyle().PaddingLeft(2).Render(lipgloss.JoinVertical(lipgloss.Left, visibleRows...))
 	return fmt.Sprintf("\n  %s\n  %s\n\n%s\n", header, subHeader, body)
 }
 
@@ -669,7 +697,8 @@ func (a *App) viewLogKeyParse() string {
 		}
 	}
 
-	body := lipgloss.NewStyle().PaddingLeft(2).Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+	visibleRows := paginateRows(rows, a.logKeyCursor, a.height-8)
+	body := lipgloss.NewStyle().PaddingLeft(2).Render(lipgloss.JoinVertical(lipgloss.Left, visibleRows...))
 	return fmt.Sprintf("\n  %s\n  %s\n\n%s\n", header, subHeader, body)
 }
 

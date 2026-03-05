@@ -4,6 +4,9 @@ A fast, concurrent, and highly functional multi-cluster Kubernetes terminal dash
 
 `k10s` is the spiritual successor to single-cluster tools like `k9s`. It was born out of the need to view, aggregate, and actively monitor critical information across **multiple** Kubernetes clusters simultaneously within a single terminal window, without needing to run multiple `tmux` panes.
 
+<img width="2545" height="1488" alt="image" src="https://github.com/user-attachments/assets/41ee6128-c488-4c39-a776-20eab104512f" />
+<img width="2553" height="1502" alt="image" src="https://github.com/user-attachments/assets/0c1a2266-8834-440d-9bc2-4948989d522b" />
+
 ## Features
 
 - **Multi-Cluster Support out of the box:** Select any number of contexts from your `~/.kube/config` and monitor them side-by-side.

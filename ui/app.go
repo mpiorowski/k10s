@@ -837,12 +837,9 @@ func (a *App) viewDashboard() string {
 							if len(wrapped) > remaining {
 								wrapped = wrapped[:remaining]
 							}
-							// Prepend this entry's lines (newest entries processed first, but lines within entry stay in order)
-							styled := make([]string, len(wrapped))
-							for j, line := range wrapped {
-								styled[j] = style.Render(line)
+							for _, line := range wrapped {
+								renderedLogs = append(renderedLogs, style.Render(line))
 							}
-							renderedLogs = append(styled, renderedLogs...)
 						}
 					} else {
 						for _, log := range filteredLogs {

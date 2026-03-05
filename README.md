@@ -4,8 +4,8 @@ A fast, concurrent, and highly functional multi-cluster Kubernetes terminal dash
 
 `k10s` is the spiritual successor to single-cluster tools like `k9s`. It was born out of the need to view, aggregate, and actively monitor critical information across **multiple** Kubernetes clusters simultaneously within a single terminal window, without needing to run multiple `tmux` panes.
 
-<img width="2545" height="1488" alt="image" src="https://github.com/user-attachments/assets/41ee6128-c488-4c39-a776-20eab104512f" />
-<img width="2553" height="1502" alt="image" src="https://github.com/user-attachments/assets/0c1a2266-8834-440d-9bc2-4948989d522b" />
+<img width="2541" height="1539" alt="image" src="https://github.com/user-attachments/assets/97ff04df-c74d-4fbf-ab11-f275c9713569" />
+<img width="2548" height="1536" alt="image" src="https://github.com/user-attachments/assets/664127a4-4fca-4323-aca8-39b9bbb89dc9" />
 
 ## Features
 
@@ -81,7 +81,9 @@ k10s --contexts dev-cluster,prod-cluster
 - **Windows:** `%AppData%\k10s\config.json`
 
 *(Note: The `k10s` engine still exclusively reads your standard `~/.kube/config` for cluster authentication.)*
-<img width="2541" height="1483" alt="image" src="https://github.com/user-attachments/assets/bd7b8206-123d-4108-91a6-b913b44475d2" />
+
+<img width="2547" height="1539" alt="image" src="https://github.com/user-attachments/assets/c7a8a786-7d09-408c-af31-36021d0735a8" />
+<img width="2556" height="1534" alt="image" src="https://github.com/user-attachments/assets/e4563f49-c991-4b53-a464-dd7c64e2c44d" />
 <img width="1278" height="972" alt="image" src="https://github.com/user-attachments/assets/b7d7d5b6-22eb-4b95-9456-0dd298a6e47f" />
 <img width="799" height="584" alt="image" src="https://github.com/user-attachments/assets/915d2c4a-ccd3-425b-b5c8-ad164bd180fc" />
 

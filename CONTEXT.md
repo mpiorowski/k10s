@@ -62,4 +62,4 @@ The `ClientManager` is designed to be highly concurrent and respectful of the Ku
   - **Green:** Healthy nodes, Running pods, CPU/Mem < 75%.
   - **Yellow:** Pending pods, CPU/Mem > 75% (Warning), Warn logs.
   - **Red:** Failed/CrashLoop pods, Error logs, CPU/Mem > 90% (Critical).
-- **Dynamic Log Rendering:** To prevent layout breakage, the `RecentLogs` buffer calculates exact available space and mathematically trims rows to perfectly fill the bottom of the panel without overflowing.
+- **Dynamic Log Rendering:** To prevent layout breakage, the `RecentLogs` buffer calculates exact available space and mathematically trims rows to perfectly fill the bottom of the panel without overflowing. Users can press `r` to toggle between truncated (with `...` ellipsis) and wrapped log lines. The wrap setting is persisted in the user config.

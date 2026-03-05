@@ -803,44 +803,69 @@ func (a *App) viewDashboard() string {
 
 			hasLogs := false
 			if a.showLogs {
-				var renderedLogs []string
+				// Filter logs first
+				var filteredLogs []k8s.LogEntry
 				for _, log := range status.RecentLogs {
 					if a.logsOnlyErrors && !a.logsOnlyWarns && !log.IsError { continue }
 					if a.logsOnlyWarns && !a.logsOnlyErrors && !log.IsWarn { continue }
 					if a.logsOnlyErrors && a.logsOnlyWarns && !log.IsError && !log.IsWarn { continue }
-
-					logStr := fmt.Sprintf("[%s] %s", log.PodName, log.Message)
-
-					var style lipgloss.Style
-					if log.IsError {
-						style = errorStyle
-					} else if log.IsWarn {
-						style = warnStyle
-					} else {
-						style = dimStyle
-					}
+					filteredLogs = append(filteredLogs, log)
 					hasLogs = true
-
-					if a.wrapLogs {
-						for _, line := range wrapStr(logStr, panelWidth-4) {
-							renderedLogs = append(renderedLogs, style.Render(line))
-						}
-					} else {
-						renderedLogs = append(renderedLogs, style.Render(truncateStr(logStr, panelWidth-4)))
-					}
 				}
 
 				if !hasLogs {
 					logLines = append(logLines, okStyle.Render(truncateStr("✅ No matching logs found", panelWidth-4)))
 				} else {
 					availableLogLines := logsHeight - 1
-					if availableLogLines > 0 {
+					var renderedLogs []string
+
+					if a.wrapLogs {
+						// Iterate newest-first so wrapped lines stay in correct order
+						for i := len(filteredLogs) - 1; i >= 0 && len(renderedLogs) < availableLogLines; i-- {
+							log := filteredLogs[i]
+							logStr := fmt.Sprintf("[%s] %s", log.PodName, log.Message)
+							var style lipgloss.Style
+							if log.IsError {
+								style = errorStyle
+							} else if log.IsWarn {
+								style = warnStyle
+							} else {
+								style = dimStyle
+							}
+							wrapped := wrapStr(logStr, panelWidth-4)
+							remaining := availableLogLines - len(renderedLogs)
+							if len(wrapped) > remaining {
+								wrapped = wrapped[:remaining]
+							}
+							// Prepend this entry's lines (newest entries processed first, but lines within entry stay in order)
+							styled := make([]string, len(wrapped))
+							for j, line := range wrapped {
+								styled[j] = style.Render(line)
+							}
+							renderedLogs = append(styled, renderedLogs...)
+						}
+					} else {
+						for _, log := range filteredLogs {
+							logStr := fmt.Sprintf("[%s] %s", log.PodName, log.Message)
+							var style lipgloss.Style
+							if log.IsError {
+								style = errorStyle
+							} else if log.IsWarn {
+								style = warnStyle
+							} else {
+								style = dimStyle
+							}
+							renderedLogs = append(renderedLogs, style.Render(truncateStr(logStr, panelWidth-4)))
+						}
 						if len(renderedLogs) > availableLogLines {
 							renderedLogs = renderedLogs[len(renderedLogs)-availableLogLines:]
 						}
 						for i, j := 0, len(renderedLogs)-1; i < j; i, j = i+1, j-1 {
 							renderedLogs[i], renderedLogs[j] = renderedLogs[j], renderedLogs[i]
 						}
+					}
+
+					if availableLogLines > 0 {
 						logLines = append(logLines, renderedLogs...)
 					}
 				}

@@ -666,8 +666,13 @@ func (a *App) viewDashboard() string {
 			ctx := contextsToRender[idx]
 			status, exists := a.statuses[ctx]
 
+			shortcutIdx := idx
+			if a.focusedIdx != -1 {
+				shortcutIdx = a.focusedIdx
+			}
+
 			var content string
-			clusterTitle := titleStyle.Render(fmt.Sprintf("Cluster: %s", ctx))
+			clusterTitle := titleStyle.Render(fmt.Sprintf("[%d] Cluster: %s", shortcutIdx+1, ctx))
 
 			if !exists {
 				content = clusterTitle + "\n\nFetching data..."
@@ -686,7 +691,7 @@ func (a *App) viewDashboard() string {
 			var healthLines []string
 			
 			// Apply title style to the cluster part if we want, but for simplicity let's just use the original with truncate
-			clusterTitleTrimmed := truncateStr(fmt.Sprintf("Cluster: %s", ctx), panelWidth-20)
+			clusterTitleTrimmed := truncateStr(fmt.Sprintf("[%d] Cluster: %s", shortcutIdx+1, ctx), panelWidth-20)
 			if len(clusterTitleTrimmed) < 1 { clusterTitleTrimmed = "Cluster" }
 			healthLines = append(healthLines, titleStyle.Render(clusterTitleTrimmed)+fmt.Sprintf(" | Ver: %s", status.Version))
 			

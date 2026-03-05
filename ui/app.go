@@ -930,6 +930,10 @@ func (a *App) viewDashboard() string {
 						if len(renderedLogs) > availableLines {
 							renderedLogs = renderedLogs[len(renderedLogs)-availableLines:]
 						}
+						// Reverse so newest logs appear on top
+						for i, j := 0, len(renderedLogs)-1; i < j; i, j = i+1, j-1 {
+							renderedLogs[i], renderedLogs[j] = renderedLogs[j], renderedLogs[i]
+						}
 						for _, rl := range renderedLogs {
 							content += rl + "\n"
 						}

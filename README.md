@@ -7,21 +7,20 @@ A fast, concurrent, and highly functional multi-cluster Kubernetes terminal dash
 ## Features
 
 - **Multi-Cluster Support out of the box:** Select any number of contexts from your `~/.kube/config` and monitor them side-by-side.
-- **Dynamic Split-Pane Layout:** Automatically adjusts and splits your terminal screen depending on how many clusters you are monitoring.
+- **Dynamic Grid Layout:** Automatically calculates an optimal multi-column grid layout based on the number of selected clusters and your terminal dimensions.
 - **Focus Mode:** Jump into a specific cluster (full screen) using the number keys (1-9) for a detailed view.
 - **Aggregated Health Metrics & Diagnostics:**
   - Node readiness, CPU, and Memory resource usage (via `metrics-server`).
   - Workload readiness for Deployments and StatefulSets (instantly flags degraded apps).
   - Pod lifecycle summary (Running, Pending, Failed).
   - **Proactive Alerts:** Automatically detects and surfaces `OOMKilled` pods, high container `Restarts`, and recent cluster-level `Warning` events (e.g. scheduling failures) directly on the dashboard.
-- **Smart Space Management:** The UI is heavily condensed. Critical errors and warnings take up zero screen space when healthy, only popping into the layout when a problem is detected, maximizing vertical space for your logs.
+- **Strict Visual Sections:** The dashboard is divided into fixed-height semantic sections (Health, Warnings, Logs) to prevent layout shifting and maximize predictability during an incident.
 - **Smart Concurrent Polling:** Uses Go routines to hit the Kubernetes API concurrently and asynchronously; a slow cluster will never block the UI for a fast cluster.
 - **Advanced Log Engine:**
   - Filter logs to specific Deployments across your clusters to minimize noise.
   - Unified, chronologically sorted tail across all selected pods.
-  - **Dynamic JSON Parsing:** Scans the logs for JSON structures, allows you to dynamically pick which JSON keys you care about, and automatically reformats them into clean `key=value` strings!
-  - **Error highlighting:** Instantly spot failure lines across any pod in any cluster.
-- **Persistent State:** `k10s` remembers exactly which clusters, deployments, and JSON log keys you've selected and restores them the next time you open the app.
+  - **Error highlighting:** Instantly spot failure lines across any pod in any cluster based on naive string matching.
+- **Persistent State:** `k10s` remembers exactly which clusters and deployments you've selected and restores them the next time you open the app.
 
 ## Installation
 
@@ -67,10 +66,9 @@ k10s --contexts dev-cluster,prod-cluster
 ### Log Management
 *   **`l` (Logs)**: Toggle the Recent Logs view.
     *   *Note: Pressing `l` for the first time will open the Deployment Selection screen. You must check which deployments you want to watch before logs will appear.*
-*   **`e` (Errors Only)**: Toggle the log filter. When active, it will strictly hide all log lines unless they contain an error-related word (e.g., `error`, `err`, `fail`, `exception`) or have a JSON log level of `error`/`fatal`.
-*   **`w` (Warns Only)**: Toggle the log filter. When active, it will strictly hide all log lines unless they contain a warning-related word (e.g., `warn`, `warning`) or have a JSON log level of `warn`/`warning`.
+*   **`e` (Errors Only)**: Toggle the log filter. When active, it will strictly hide all log lines unless they contain an error-related word (e.g., `error`, `err`, `fail`, `exception`).
+*   **`w` (Warns Only)**: Toggle the log filter. When active, it will strictly hide all log lines unless they contain a warning-related word (e.g., `warn`, `warning`).
     *   *Note: You can activate both `e` and `w` simultaneously to see only errors and warnings, filtering out all standard info/debug logs.*
-*   **`p` (Parse JSON)**: *Available only when a specific cluster is Focused (e.g., by pressing `1`).* Opens the JSON key extraction menu for that specific cluster.
 
 ## Configuration Directory
 

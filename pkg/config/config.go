@@ -9,12 +9,11 @@ import (
 )
 
 type Config struct {
-	SelectedContexts   []string            `json:"selected_contexts"`
-	SelectedLogFilters []string            `json:"selected_log_filters"`
-	SelectedLogKeys    map[string][]string `json:"selected_log_keys"`
-	ShowLogs           bool                `json:"show_logs"`
-	LogsOnlyErrors     bool                `json:"logs_only_errors"`
-	LogsOnlyWarns      bool                `json:"logs_only_warns"`
+	SelectedContexts   []string `json:"selected_contexts"`
+	SelectedLogFilters []string `json:"selected_log_filters"`
+	ShowLogs           bool     `json:"show_logs"`
+	LogsOnlyErrors     bool     `json:"logs_only_errors"`
+	LogsOnlyWarns      bool     `json:"logs_only_warns"`
 }
 
 func GetConfigPath() string {

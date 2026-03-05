@@ -2,8 +2,8 @@ package ui
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -24,7 +24,6 @@ const (
 	stateDashboard viewState = iota
 	stateSelection
 	stateLogSelection
-	stateLogKeyParse
 	stateInfo
 )
 
@@ -65,12 +64,6 @@ type App struct {
 	logCursor           int
 	selectedDeployments map[string]struct{}
 	activeLogFilters    []string
-
-	// Log Key Parse state
-	availableLogKeys []string
-	logKeyCursor     int
-	selectedLogKeys  map[string]struct{}
-	activeLogKeys    map[string][]string
 }
 
 func NewApp(initialContexts []string) *App {
@@ -91,10 +84,10 @@ func NewApp(initialContexts []string) *App {
 		allContexts:         allCtx,
 		selected:            selectedMap,
 		selectedDeployments: make(map[string]struct{}),
-		selectedLogKeys:     make(map[string]struct{}),
-		activeLogKeys:       make(map[string][]string),
 		width:               80,
 		height:              24,
+		logsOnlyErrors:      true,
+		logsOnlyWarns:       true,
 	}
 
 	// Load previously saved log configuration
@@ -104,9 +97,6 @@ func NewApp(initialContexts []string) *App {
 		app.logsOnlyErrors = cfg.LogsOnlyErrors
 		app.logsOnlyWarns = cfg.LogsOnlyWarns
 		app.activeLogFilters = cfg.SelectedLogFilters
-		if cfg.SelectedLogKeys != nil {
-			app.activeLogKeys = cfg.SelectedLogKeys
-		}
 		for _, f := range cfg.SelectedLogFilters {
 			app.selectedDeployments[f] = struct{}{}
 		}
@@ -144,12 +134,12 @@ func (a *App) Init() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-func fetchClusterStatus(manager *k8s.ClientManager, ctxName string, logFilters []string, jsonKeys []string) tea.Cmd {
+func fetchClusterStatus(manager *k8s.ClientManager, ctxName string, logFilters []string) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		status := manager.FetchStatus(ctx, ctxName, logFilters, jsonKeys)
+		status := manager.FetchStatus(ctx, ctxName, logFilters)
 		return statusMsg{ctxName: ctxName, status: status}
 	}
 }
@@ -208,7 +198,6 @@ func (a *App) saveConfig() {
 	cfg := config.Config{
 		SelectedContexts:   a.contexts,
 		SelectedLogFilters: a.activeLogFilters,
-		SelectedLogKeys:    a.activeLogKeys,
 		ShowLogs:           a.showLogs,
 		LogsOnlyErrors:     a.logsOnlyErrors,
 		LogsOnlyWarns:      a.logsOnlyWarns,
@@ -316,7 +305,7 @@ func (a *App) updateLogSelection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// trigger a refresh
 		var cmds []tea.Cmd
 		for _, ctx := range a.contexts {
-			cmds = append(cmds, fetchClusterStatus(a.manager, ctx, a.activeLogFilters, a.activeLogKeys[ctx]))
+			cmds = append(cmds, fetchClusterStatus(a.manager, ctx, a.activeLogFilters))
 		}
 		return a, tea.Batch(cmds...)
 	case "esc":
@@ -326,53 +315,6 @@ func (a *App) updateLogSelection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-func (a *App) updateLogKeyParse(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "up", "k":
-		if a.logKeyCursor > 0 {
-			a.logKeyCursor--
-		}
-	case "down", "j":
-		if a.logKeyCursor < len(a.availableLogKeys)-1 {
-			a.logKeyCursor++
-		}
-	case " ":
-		if len(a.availableLogKeys) == 0 {
-			return a, nil
-		}
-		key := a.availableLogKeys[a.logKeyCursor]
-		if _, ok := a.selectedLogKeys[key]; ok {
-			delete(a.selectedLogKeys, key)
-		} else {
-			a.selectedLogKeys[key] = struct{}{}
-		}
-	case "enter":
-		var filters []string
-		for _, key := range a.availableLogKeys {
-			if _, ok := a.selectedLogKeys[key]; ok {
-				filters = append(filters, key)
-			}
-		}
-		
-		if a.focusedIdx != -1 {
-			ctxName := a.contexts[a.focusedIdx]
-			a.activeLogKeys[ctxName] = filters
-		}
-
-		a.state = stateDashboard
-		a.saveConfig()
-		
-		var cmds []tea.Cmd
-		for _, ctx := range a.contexts {
-			cmds = append(cmds, fetchClusterStatus(a.manager, ctx, a.activeLogFilters, a.activeLogKeys[ctx]))
-		}
-		return a, tea.Batch(cmds...)
-	case "esc":
-		a.state = stateDashboard
-		return a, nil
-	}
-	return a, nil
-}
 
 func (a *App) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
@@ -406,44 +348,6 @@ func (a *App) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.logsOnlyWarns = !a.logsOnlyWarns
 		a.saveConfig()
 		return a, nil
-	case "p":
-		if a.focusedIdx == -1 {
-			return a, nil
-		}
-
-		a.state = stateLogKeyParse
-		a.logKeyCursor = 0
-		a.selectedLogKeys = make(map[string]struct{})
-
-		ctxName := a.contexts[a.focusedIdx]
-		if currentKeys, ok := a.activeLogKeys[ctxName]; ok {
-			for _, k := range currentKeys {
-				a.selectedLogKeys[k] = struct{}{}
-			}
-		}
-
-		// Extract all unique JSON keys from current logs for the focused cluster
-		keySet := make(map[string]struct{})
-		if status, ok := a.statuses[ctxName]; ok {
-			for _, log := range status.RecentLogs {
-				line := strings.TrimSpace(log.RawMessage)
-				if strings.HasPrefix(line, "{") && strings.HasSuffix(line, "}") {
-					var jsonLog map[string]interface{}
-					if err := json.Unmarshal([]byte(line), &jsonLog); err == nil {
-						for k := range jsonLog {
-							keySet[k] = struct{}{}
-						}
-					}
-				}
-			}
-		}
-		var keys []string
-		for k := range keySet {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		a.availableLogKeys = keys
-		return a, nil
 	case "i":
 		a.state = stateInfo
 		return a, nil
@@ -462,8 +366,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a.updateSelection(msg)
 		} else if a.state == stateLogSelection {
 			return a.updateLogSelection(msg)
-		} else if a.state == stateLogKeyParse {
-			return a.updateLogKeyParse(msg)
 		} else if a.state == stateInfo {
 			if msg.String() == "i" || msg.String() == "esc" || msg.String() == "enter" {
 				a.state = stateDashboard
@@ -485,7 +387,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case initDashboardMsg:
 		var cmds []tea.Cmd
 		for _, ctx := range a.contexts {
-			cmds = append(cmds, fetchClusterStatus(a.manager, ctx, a.activeLogFilters, a.activeLogKeys[ctx]))
+			cmds = append(cmds, fetchClusterStatus(a.manager, ctx, a.activeLogFilters))
 		}
 		return a, tea.Batch(cmds...)
 
@@ -497,7 +399,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmds []tea.Cmd
 		if a.state == stateDashboard {
 			for _, ctx := range a.contexts {
-				cmds = append(cmds, fetchClusterStatus(a.manager, ctx, a.activeLogFilters, a.activeLogKeys[ctx]))
+				cmds = append(cmds, fetchClusterStatus(a.manager, ctx, a.activeLogFilters))
 			}
 		}
 		cmds = append(cmds, tick())
@@ -660,53 +562,16 @@ func (a *App) viewInfo() string {
 			keyStyle.Render("Restarts: "), descStyle.Render("Total container restarts (Yellow alert)"),
 			keyStyle.Render("Warnings: "), descStyle.Render("Recent cluster-level error events (last 1hr)"),
 		),
-		fmt.Sprintf("%s\n%s %s\n%s %s\n%s %s\n%s %s\n%s %s",
+		fmt.Sprintf("%s\n%s %s\n%s %s\n%s %s\n%s %s",
 			titleStyle.Render("Keyboard Shortcuts:"),
 			keyStyle.Render("1-9:"), descStyle.Render("Focus (full-screen) a specific cluster"),
 			keyStyle.Render("l:  "), descStyle.Render("Toggle logs / Select deployment filters"),
 			keyStyle.Render("e:  "), descStyle.Render("Toggle 'Errors Only' log filter"),
 			keyStyle.Render("w:  "), descStyle.Render("Toggle 'Warns Only' log filter"),
-			keyStyle.Render("p:  "), descStyle.Render("Parse JSON keys (Available in Focused view)"),
 		),
 	}
 
 	body := lipgloss.NewStyle().PaddingLeft(2).Render(lipgloss.JoinVertical(lipgloss.Left, sections...))
-	return fmt.Sprintf("\n  %s\n  %s\n\n%s\n", header, subHeader, body)
-}
-
-func (a *App) viewLogKeyParse() string {
-	header := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("86")).Render("Select JSON Keys to Display in Logs")
-	subHeader := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("Use UP/DOWN to navigate, SPACE to select, ENTER to confirm. (ESC to cancel)")
-
-	var rows []string
-	
-	if len(a.availableLogKeys) == 0 {
-		rows = append(rows, lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Render("No JSON logs found in current buffer to extract keys from."))
-	} else {
-		for i, key := range a.availableLogKeys {
-			cursor := " " // no cursor
-			if a.logKeyCursor == i {
-				cursor = ">" // cursor!
-			}
-
-			checked := " " // not selected
-			if _, ok := a.selectedLogKeys[key]; ok {
-				checked = "x" // selected!
-			}
-
-			row := fmt.Sprintf("%s [%s] %s", cursor, checked, key)
-			if a.logKeyCursor == i {
-				rows = append(rows, lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Render(row))
-			} else if checked == "x" {
-				rows = append(rows, lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Render(row))
-			} else {
-				rows = append(rows, row)
-			}
-		}
-	}
-
-	visibleRows := paginateRows(rows, a.logKeyCursor, a.height-8)
-	body := lipgloss.NewStyle().PaddingLeft(2).Render(lipgloss.JoinVertical(lipgloss.Left, visibleRows...))
 	return fmt.Sprintf("\n  %s\n  %s\n\n%s\n", header, subHeader, body)
 }
 
@@ -717,11 +582,9 @@ func (a *App) viewDashboard() string {
 
 	headerStr := fmt.Sprintf("Monitoring %d Clusters | 1-%d focus | 's' cls | 'l' logs | 'e' err | 'w' warn | 'i' info | 'q' quit", len(a.contexts), len(a.contexts))
 	if a.focusedIdx != -1 {
-		headerStr = fmt.Sprintf("Focused on: %s | %d un-focus | 's' cls | 'l' logs | 'e' err | 'w' warn | 'p' parse | 'i' info | 'q' quit", a.contexts[a.focusedIdx], a.focusedIdx+1)
+		headerStr = fmt.Sprintf("Focused on: %s | %d un-focus | 's' cls | 'l' logs | 'e' err | 'w' warn | 'i' info | 'q' quit", a.contexts[a.focusedIdx], a.focusedIdx+1)
 	}
 	header := lipgloss.NewStyle().Bold(true).Padding(0, 1).Background(lipgloss.Color("62")).Foreground(lipgloss.Color("230")).Render(headerStr)
-
-	panels := []string{}
 
 	var contextsToRender []string
 	if a.focusedIdx != -1 {
@@ -730,223 +593,237 @@ func (a *App) viewDashboard() string {
 		contextsToRender = a.contexts
 	}
 
-	panelWidth := (a.width / len(contextsToRender))
-	if panelWidth < 15 {
-		panelWidth = 15 // min width
+	numContexts := len(contextsToRender)
+	cols := int(math.Ceil(math.Sqrt(float64(numContexts))))
+	if cols == 0 {
+		cols = 1
+	}
+	rows := int(math.Ceil(float64(numContexts) / float64(cols)))
+	if rows == 0 {
+		rows = 1
 	}
 
+	panelWidth := a.width / cols
+	if panelWidth < 20 {
+		panelWidth = 20
+	}
+	// Account for the single header line
+	availableHeight := a.height - 1
+	panelHeight := availableHeight / rows
+	if panelHeight < 15 {
+		panelHeight = 15
+	}
 	panelStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("62")).
-		Width(panelWidth - 2). // Account for borders
-		Height(a.height - 3)   // Account for header, footer and borders
+		Width(panelWidth - 2). // Account for outer borders
+		Height(panelHeight - 2) // Account for outer borders
 
-	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9")) // Red
-	okStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))   // Green
-	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("11")) // Yellow
+	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+	okStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("86"))
+	sectionTitleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("62"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 
-	for _, ctx := range contextsToRender {
-		var content string
-		status, exists := a.statuses[ctx]
+	innerAvailableHeight := panelHeight - 2
+	healthHeight := 5
+	warningsHeight := 5
+	// Subtract 2 to account for the two sectionBorderStyle bottom borders
+	logsHeight := innerAvailableHeight - healthHeight - warningsHeight - 2
+	if logsHeight < 2 {
+		logsHeight = 2
+	}
+	sectionBorderStyle := lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder(), false, false, true, false).
+		BorderForeground(lipgloss.Color("238")).
+		Width(panelWidth - 4) // Inner width
 
-		content += titleStyle.Render(fmt.Sprintf("Cluster: %s", ctx)) + "\n\n"
-
-		if !exists {
-			content += "Fetching data..."
-		} else if status.Error != nil {
-			errStr := fmt.Sprintf("Error:\n%v", status.Error)
-			// Truncate or wrap error so it doesn't break layout
-			lines := strings.Split(errStr, "\n")
-			for _, line := range lines {
-				if len(line) > panelWidth-4 && panelWidth > 4 {
-					// Hard wrap the line
-					for len(line) > panelWidth-4 {
-						content += errorStyle.Render(line[:panelWidth-4]) + "\n"
-						line = line[panelWidth-4:]
-					}
-				}
-				content += errorStyle.Render(line) + "\n"
+	truncateStr := func(s string, max int) string {
+		s = strings.ReplaceAll(s, "\n", " ")
+		s = strings.ReplaceAll(s, "\r", "")
+		runes := []rune(s)
+		if len(runes) > max {
+			if max > 3 {
+				return string(runes[:max-3]) + "..."
 			}
-		} else {
-			// Row 1: Version & Update Time
-			content += fmt.Sprintf("Ver: %s | Upd: %s\n", status.Version, status.LastUpdate.Format("15:04:05"))
+			return string(runes[:max])
+		}
+		return string(runes)
+	}
 
-			// Row 2: Nodes & Resources
+	var gridRows []string
+	
+	for r := 0; r < rows; r++ {
+		var rowPanels []string
+		for c := 0; c < cols; c++ {
+			idx := r*cols + c
+			if idx >= numContexts {
+				rowPanels = append(rowPanels, panelStyle.Render(""))
+				continue
+			}
+
+			ctx := contextsToRender[idx]
+			status, exists := a.statuses[ctx]
+
+			var content string
+			clusterTitle := titleStyle.Render(fmt.Sprintf("Cluster: %s", ctx))
+
+			if !exists {
+				content = clusterTitle + "\n\nFetching data..."
+				rowPanels = append(rowPanels, panelStyle.Render(content))
+				continue
+			}
+			
+			if status.Error != nil {
+				errStr := fmt.Sprintf("Error:\n%v", status.Error)
+				content = clusterTitle + "\n\n" + errorStyle.Render(errStr)
+				rowPanels = append(rowPanels, panelStyle.Render(content))
+				continue
+			}
+
+			// --- Section 1: Health ---
+			var healthLines []string
+			
+			// Apply title style to the cluster part if we want, but for simplicity let's just use the original with truncate
+			clusterTitleTrimmed := truncateStr(fmt.Sprintf("Cluster: %s", ctx), panelWidth-20)
+			if len(clusterTitleTrimmed) < 1 { clusterTitleTrimmed = "Cluster" }
+			healthLines = append(healthLines, titleStyle.Render(clusterTitleTrimmed)+fmt.Sprintf(" | Ver: %s", status.Version))
+			
 			nodeStr := fmt.Sprintf("Nodes: %d/%d", status.NodesReady, status.NodesTotal)
-			if status.NodesReady < status.NodesTotal {
-				nodeStr = warnStyle.Render(nodeStr)
-			} else {
-				nodeStr = okStyle.Render(nodeStr)
-			}
+			if status.NodesReady < status.NodesTotal { nodeStr = warnStyle.Render(nodeStr) } else { nodeStr = okStyle.Render(nodeStr) }
 			
 			resStr := ""
 			if status.CpuCapacity > 0 {
 				cpuPct := float64(status.CpuUsage) / float64(status.CpuCapacity) * 100
 				cpuStr := fmt.Sprintf("CPU: %.0f%%", cpuPct)
-				if cpuPct > 90 {
-					cpuStr = errorStyle.Render(cpuStr)
-				} else if cpuPct > 75 {
-					cpuStr = warnStyle.Render(cpuStr)
-				} else {
-					cpuStr = okStyle.Render(cpuStr)
-				}
+				if cpuPct > 90 { cpuStr = errorStyle.Render(cpuStr) } else if cpuPct > 75 { cpuStr = warnStyle.Render(cpuStr) } else { cpuStr = okStyle.Render(cpuStr) }
 				resStr += " | " + cpuStr
 			}
 			if status.MemCapacity > 0 {
 				memPct := float64(status.MemUsage) / float64(status.MemCapacity) * 100
 				memStr := fmt.Sprintf("Mem: %.0f%%", memPct)
-				if memPct > 90 {
-					memStr = errorStyle.Render(memStr)
-				} else if memPct > 75 {
-					memStr = warnStyle.Render(memStr)
-				} else {
-					memStr = okStyle.Render(memStr)
-				}
+				if memPct > 90 { memStr = errorStyle.Render(memStr) } else if memPct > 75 { memStr = warnStyle.Render(memStr) } else { memStr = okStyle.Render(memStr) }
 				resStr += " | " + memStr
 			}
-			content += nodeStr + resStr + "\n"
+			healthLines = append(healthLines, truncateStr(nodeStr+resStr, panelWidth-4))
 
-			// Row 3: Workloads
 			depStr := fmt.Sprintf("Deps: %d/%d", status.DeploymentsReady, status.DeploymentsTotal)
-			if status.DeploymentsReady < status.DeploymentsTotal {
-				depStr = warnStyle.Render(depStr)
-			} else {
-				depStr = okStyle.Render(depStr)
-			}
-			
+			if status.DeploymentsReady < status.DeploymentsTotal { depStr = warnStyle.Render(depStr) } else { depStr = okStyle.Render(depStr) }
 			stsStr := fmt.Sprintf("STS: %d/%d", status.StatefulSetsReady, status.StatefulSetsTotal)
-			if status.StatefulSetsReady < status.StatefulSetsTotal {
-				stsStr = warnStyle.Render(stsStr)
-			} else {
-				stsStr = okStyle.Render(stsStr)
-			}
-			content += depStr + " | " + stsStr + "\n"
+			if status.StatefulSetsReady < status.StatefulSetsTotal { stsStr = warnStyle.Render(stsStr) } else { stsStr = okStyle.Render(stsStr) }
+			healthLines = append(healthLines, truncateStr(depStr+" | "+stsStr, panelWidth-4))
 
-			// Show degraded workloads only if there are any
+			podStr := fmt.Sprintf("Pods: %d (", status.PodsTotal)
+			if status.PodsRunning > 0 { podStr += okStyle.Render(fmt.Sprintf("R:%d ", status.PodsRunning)) } else { podStr += fmt.Sprintf("R:%d ", status.PodsRunning) }
+			if status.PodsPending > 0 { podStr += warnStyle.Render(fmt.Sprintf("P:%d ", status.PodsPending)) } else { podStr += fmt.Sprintf("P:%d ", status.PodsPending) }
+			if status.PodsFailed > 0 { podStr += errorStyle.Render(fmt.Sprintf("F:%d", status.PodsFailed)) } else { podStr += fmt.Sprintf("F:%d", status.PodsFailed) }
+			podStr += ")"
+			healthLines = append(healthLines, truncateStr(podStr, panelWidth-4))
+
+			oomStr := fmt.Sprintf("OOM: %d", status.PodsOOMKilled)
+			if status.PodsOOMKilled > 0 { oomStr = errorStyle.Render(oomStr) }
+			resCountStr := fmt.Sprintf("Restarts: %d", status.RestartsTotal)
+			if status.RestartsTotal > 0 { resCountStr = warnStyle.Render(resCountStr) }
+			healthLines = append(healthLines, truncateStr(oomStr+" | "+resCountStr, panelWidth-4))
+
+			for len(healthLines) < healthHeight { healthLines = append(healthLines, "") }
+			healthBlock := lipgloss.JoinVertical(lipgloss.Left, healthLines[:healthHeight]...)
+
+			// --- Section 2: Active Warnings ---
+			var warnLines []string
+			warnLines = append(warnLines, sectionTitleStyle.Render("Active Warnings"))
+			hasWarnings := false
 			if status.DeploymentsReady < status.DeploymentsTotal {
 				for _, d := range status.DeploymentsDegraded {
-					content += errorStyle.Render("  ! " + d) + "\n"
+					msg := truncateStr("! Dep Degraded: "+d, panelWidth-4)
+					warnLines = append(warnLines, errorStyle.Render(msg))
+					hasWarnings = true
 				}
 			}
 			if status.StatefulSetsReady < status.StatefulSetsTotal {
 				for _, s := range status.StatefulSetsDegraded {
-					content += errorStyle.Render("  ! " + s) + "\n"
+					msg := truncateStr("! STS Degraded: "+s, panelWidth-4)
+					warnLines = append(warnLines, errorStyle.Render(msg))
+					hasWarnings = true
 				}
+			}
+			for _, w := range status.WarningEvents {
+				msg := truncateStr("Event: "+w, panelWidth-4)
+				warnLines = append(warnLines, warnStyle.Render(msg))
+				hasWarnings = true
+			}
+			
+			if !hasWarnings {
+				warnLines = append(warnLines, okStyle.Render(truncateStr("✅ No active cluster warnings", panelWidth-4)))
 			}
 
-			// Row 4: Pods Summary
-			podStr := fmt.Sprintf("Pods: %d (", status.PodsTotal)
-			
-			if status.PodsRunning > 0 {
-				podStr += okStyle.Render(fmt.Sprintf("R:%d ", status.PodsRunning))
-			} else {
-				podStr += fmt.Sprintf("R:%d ", status.PodsRunning)
-			}
-			
-			if status.PodsPending > 0 {
-				podStr += warnStyle.Render(fmt.Sprintf("P:%d ", status.PodsPending))
-			} else {
-				podStr += fmt.Sprintf("P:%d ", status.PodsPending)
-			}
-			
-			if status.PodsFailed > 0 {
-				podStr += errorStyle.Render(fmt.Sprintf("F:%d", status.PodsFailed))
-			} else {
-				podStr += fmt.Sprintf("F:%d", status.PodsFailed)
-			}
-			podStr += ")"
-			content += podStr + "\n"
-			
-			// Critical Pod Errors (Only shown if non-zero)
-			if status.PodsOOMKilled > 0 || status.RestartsTotal > 0 {
-				errStr := ""
-				if status.PodsOOMKilled > 0 {
-					errStr += errorStyle.Render(fmt.Sprintf("OOMKilled: %d ", status.PodsOOMKilled))
-				}
-				if status.RestartsTotal > 0 {
-					errStr += warnStyle.Render(fmt.Sprintf("Restarts: %d", status.RestartsTotal))
-				}
-				content += errStr + "\n"
-			}
+			for len(warnLines) < warningsHeight { warnLines = append(warnLines, "") }
+			warnBlock := lipgloss.JoinVertical(lipgloss.Left, warnLines[:warningsHeight]...)
 
-			// Warnings (Only shown if present)
-			if len(status.WarningEvents) > 0 {
-				content += titleStyle.Render("Warnings:") + "\n"
-				for _, w := range status.WarningEvents {
-					maxLen := panelWidth - 4
-					if len(w) > maxLen && maxLen > 0 {
-						w = w[:maxLen-3] + "..."
-					}
-					content += warnStyle.Render(w) + "\n"
-				}
-			}
+			// --- Section 3: Critical Logs ---
+			var logLines []string
+			logTitle := "Recent Logs"
+			if a.logsOnlyErrors && a.logsOnlyWarns { logTitle += " (Err/Warn)" } else if a.logsOnlyErrors { logTitle += " (Err)" } else if a.logsOnlyWarns { logTitle += " (Warn)" }
+			logLines = append(logLines, sectionTitleStyle.Render(logTitle))
 
+			hasLogs := false
 			if a.showLogs {
-				content += titleStyle.Render("Logs")
-				if a.logsOnlyErrors && a.logsOnlyWarns {
-					content += titleStyle.Render(" (Errors & Warns Only)")
-				} else if a.logsOnlyErrors {
-					content += titleStyle.Render(" (Errors Only)")
-				} else if a.logsOnlyWarns {
-					content += titleStyle.Render(" (Warns Only)")
-				}
-				content += "\n"
-
 				var renderedLogs []string
 				for _, log := range status.RecentLogs {
-					if a.logsOnlyErrors && !a.logsOnlyWarns && !log.IsError {
-						continue
-					}
-					if a.logsOnlyWarns && !a.logsOnlyErrors && !log.IsWarn {
-						continue
-					}
-					if a.logsOnlyErrors && a.logsOnlyWarns && !log.IsError && !log.IsWarn {
-						continue
-					}
+					if a.logsOnlyErrors && !a.logsOnlyWarns && !log.IsError { continue }
+					if a.logsOnlyWarns && !a.logsOnlyErrors && !log.IsWarn { continue }
+					if a.logsOnlyErrors && a.logsOnlyWarns && !log.IsError && !log.IsWarn { continue }
 
 					logStr := fmt.Sprintf("[%s] %s", log.PodName, log.Message)
-					// Truncate to avoid wrapping breaking the layout too badly
-					maxLen := panelWidth - 4
-					if len(logStr) > maxLen && maxLen > 0 {
-						logStr = logStr[:maxLen-3] + "..."
-					}
-
+					logStr = truncateStr(logStr, panelWidth-4)
+					
 					if log.IsError {
 						renderedLogs = append(renderedLogs, errorStyle.Render(logStr))
+						hasLogs = true
 					} else if log.IsWarn {
 						renderedLogs = append(renderedLogs, warnStyle.Render(logStr))
+						hasLogs = true
 					} else {
-						renderedLogs = append(renderedLogs, lipgloss.NewStyle().Foreground(lipgloss.Color("246")).Render(logStr))
+						renderedLogs = append(renderedLogs, dimStyle.Render(logStr))
+						hasLogs = true
 					}
 				}
-				if len(renderedLogs) == 0 {
-					content += "No matching logs found.\n"
+				
+				if !hasLogs {
+					logLines = append(logLines, okStyle.Render(truncateStr("✅ No matching logs found", panelWidth-4)))
 				} else {
-					usedLines := strings.Count(content, "\n")
-					availableLines := (a.height - 4) - usedLines
-					
-					if availableLines > 0 {
-						if len(renderedLogs) > availableLines {
-							renderedLogs = renderedLogs[len(renderedLogs)-availableLines:]
+					availableLogLines := logsHeight - 1
+					if availableLogLines > 0 {
+						if len(renderedLogs) > availableLogLines {
+							renderedLogs = renderedLogs[len(renderedLogs)-availableLogLines:]
 						}
-						// Reverse so newest logs appear on top
 						for i, j := 0, len(renderedLogs)-1; i < j; i, j = i+1, j-1 {
 							renderedLogs[i], renderedLogs[j] = renderedLogs[j], renderedLogs[i]
 						}
-						for _, rl := range renderedLogs {
-							content += rl + "\n"
-						}
+						logLines = append(logLines, renderedLogs...)
 					}
 				}
+			} else {
+				logLines = append(logLines, dimStyle.Render(truncateStr("Logs disabled. Press 'l' to select deployments.", panelWidth-4)))
 			}
-		}
 
-		panels = append(panels, panelStyle.Render(content))
+			for len(logLines) < logsHeight { logLines = append(logLines, "") }
+			logBlock := lipgloss.JoinVertical(lipgloss.Left, logLines[:logsHeight]...)
+
+			content = lipgloss.JoinVertical(lipgloss.Left,
+				sectionBorderStyle.Render(healthBlock),
+				sectionBorderStyle.Render(warnBlock),
+				logBlock,
+			)
+
+			rowPanels = append(rowPanels, panelStyle.Render(content))
+		}
+		
+		gridRows = append(gridRows, lipgloss.JoinHorizontal(lipgloss.Top, rowPanels...))
 	}
 
-	body := lipgloss.JoinHorizontal(lipgloss.Top, panels...)
-
+	body := lipgloss.JoinVertical(lipgloss.Left, gridRows...)
 	return lipgloss.JoinVertical(lipgloss.Left, header, body)
 }
 
@@ -959,9 +836,6 @@ func (a *App) View() string {
 	}
 	if a.state == stateLogSelection {
 		return a.viewLogSelection()
-	}
-	if a.state == stateLogKeyParse {
-		return a.viewLogKeyParse()
 	}
 	if a.state == stateInfo {
 		return a.viewInfo()

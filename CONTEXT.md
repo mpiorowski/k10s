@@ -14,9 +14,9 @@
 ## Project Structure
 - `main.go`: The entry point that executes the Cobra root command.
 - `cmd/root.go`: Defines the CLI flags and initializes the Bubble Tea application (`ui.NewApp()`).
-- `pkg/config/config.go`: Handles saving and loading the user's persistent preferences (selected clusters, log filters, JSON keys) to the OS standard user config directory (e.g., `~/.config/k10s/config.json`).
-- `pkg/k8s/client.go`: The core Kubernetes interaction engine. Contains the `ClientManager` which handles concurrent API fetching, pod log streaming, and dynamic JSON log parsing.
-- `ui/app.go`: The Bubble Tea application logic. Manages the state machine (Selection Menu vs Dashboard vs Log Menus), keyboard event handlers, and the dynamic rendering of the Lipgloss split-pane layout.
+- `pkg/config/config.go`: Handles saving and loading the user's persistent preferences (selected clusters, log filters) to the OS standard user config directory (e.g., `~/.config/k10s/config.json`).
+- `pkg/k8s/client.go`: The core Kubernetes interaction engine. Contains the `ClientManager` which handles concurrent API fetching, pod log streaming, and log level identification.
+- `ui/app.go`: The Bubble Tea application logic. Manages the state machine (Selection Menu vs Dashboard vs Log Menus), keyboard event handlers, and the dynamic rendering of the Lipgloss split-pane grid layout.
 
 ## Application States & Workflow
 The TUI operates a state machine with 4 distinct views (`viewState`):
@@ -27,17 +27,13 @@ The TUI operates a state machine with 4 distinct views (`viewState`):
    - Renders an interactive checklist. Selections are saved to the OS standard user config directory.
 2. **`stateDashboard` (Main Multi-Cluster View):**
    - The primary monitoring layout.
-   - Calculates available terminal width/height and dynamically splits the screen into `N` vertical panels based on the number of selected clusters.
+   - Calculates available terminal width/height and dynamically computes a grid layout of panels based on the number of selected clusters.
    - Users can press `1-9` to "Focus" a specific cluster, expanding its panel to fill the entire terminal screen.
 3. **`stateLogSelection` (Deployment Log Filtering):**
    - Triggered by pressing `l`.
    - Fetches and deduplicates all `Deployments` running across the active clusters.
    - Allows users to select specific deployments to watch logs for, preventing the UI from being overwhelmed by noisy system pods.
-4. **`stateLogKeyParse` (Dynamic JSON Formatting):**
-   - Triggered by pressing `p` (only available when a specific cluster is "Focused").
-   - Scans the currently buffered log lines for that specific cluster, discovers all available JSON keys, and allows the user to select which keys to render in a `key=value` format.
-   - Selections are stored on a *per-cluster* basis.
-5. **`stateInfo` (Legend & Help):**
+4. **`stateInfo` (Legend & Help):**
    - Triggered by pressing `i`.
    - Displays a static overlay explaining the highly condensed dashboard acronyms (Deps, STS, R/P/F pod codes) and diagnostic triggers (OOMKilled, Restarts, Warnings) alongside a keyboard shortcut reference.
 
@@ -55,16 +51,15 @@ The `ClientManager` is designed to be highly concurrent and respectful of the Ku
   - Uses `TailLines: 40` to quickly grab the end of the log stream.
   - **Chronological Aggregation:** Explicitly requests API timestamps, parses them, and sorts all interleaved pod logs chronologically before rendering.
   - Maintains an in-memory rolling buffer of the last 100 log lines per cluster.
-- **Smart JSON Parser:**
-  - If a log line is raw text, it passes it through.
-  - If a log line is structured JSON, it intercepts it, parses the object, and dynamically re-formats the output string based on the user's selected keys (configured via the `p` menu).
-  - Automatically upgrades a log line to an "Error" state (highlighted in red) or "Warn" state (highlighted in yellow) based on the parsed JSON `"level"` key. If no JSON level is found, it falls back to a naive text search for words like "error", "fail", or "warn".
+- **Log Parsing:**
+  - Evaluates raw log lines using fast string matching to automatically upgrade a log line to an "Error" state (highlighted in red) or "Warn" state (highlighted in yellow) based on matching common level strings like "error", "fail", "exception" or "warn".
 
 ## Styling & Layout Mechanics
-- **Smart Condensation:** The dashboard is designed to maximize vertical space for logs. Static health data (Version, Nodes, CPU) is heavily condensed into single rows using pipes (`|`). 
-- **Reactive Alerting:** Diagnostic fields (Degraded workloads, OOMKilled counts, Restarts, and Warning Events) consume zero vertical lines on the dashboard when a cluster is perfectly healthy. They only pop into the layout when a non-zero/failing state is detected.
+- **Strict Grid Layout:** The dashboard creates a multi-column matrix depending on the number of selected clusters, keeping boxes close to a golden ratio.
+- **Semantic Sections:** Each cluster panel uses rigid, fixed-height internal blocks (Health, Active Warnings, Recent Logs) that are clearly delineated by visual borders. This guarantees UI predictability and zero layout shift.
+- **Reactive Content:** Instead of collapsing empty panels, "✅ Healthy" placeholders fill empty diagnostic zones, maintaining grid stability and providing reassuring feedback.
 - **Semantic Colors:**
   - **Green:** Healthy nodes, Running pods, CPU/Mem < 75%.
-  - **Yellow:** Pending pods, CPU/Mem > 75% (Warning).
+  - **Yellow:** Pending pods, CPU/Mem > 75% (Warning), Warn logs.
   - **Red:** Failed/CrashLoop pods, Error logs, CPU/Mem > 90% (Critical).
-- **Dynamic Log Rendering:** To prevent layout breakage, the dashboard calculates how much vertical space is consumed by the Header and Pod Stats, and mathematically trims the `RecentLogs` buffer to render exactly the number of lines needed to perfectly fill the bottom of the panel without overflowing.
+- **Dynamic Log Rendering:** To prevent layout breakage, the `RecentLogs` buffer calculates exact available space and mathematically trims rows to perfectly fill the bottom of the panel without overflowing.

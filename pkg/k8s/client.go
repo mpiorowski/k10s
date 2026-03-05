@@ -3,7 +3,6 @@ package k8s
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"sort"
@@ -116,7 +115,7 @@ func (cm *ClientManager) GetDeployments(ctx context.Context, contexts []string) 
 }
 
 // FetchStatus concurrently queries the API server for cluster health metrics
-func (cm *ClientManager) FetchStatus(ctx context.Context, ctxName string, logFilters []string, jsonKeys []string) ClusterStatus {
+func (cm *ClientManager) FetchStatus(ctx context.Context, ctxName string, logFilters []string) ClusterStatus {
 	status := ClusterStatus{
 		ContextName: ctxName,
 		LastUpdate:  time.Now(),
@@ -330,52 +329,9 @@ func (cm *ClientManager) FetchStatus(ctx context.Context, ctxName string, logFil
 						isWarn := !isErr && (strings.Contains(strings.ToLower(line), "warn") ||
 								  strings.Contains(strings.ToLower(line), "warning"))
 
-						// Naive JSON parsing for structured logs
-						displayMsg := line
-						if len(jsonKeys) > 0 && strings.HasPrefix(line, "{") && strings.HasSuffix(line, "}") {
-							var jsonLog map[string]interface{}
-							if err := json.Unmarshal([]byte(line), &jsonLog); err == nil {
-								// If the log has a "level" key in the JSON itself, use it to definitively override the naive text match
-								for k, v := range jsonLog {
-									if strings.ToLower(k) == "level" {
-										valStr := strings.ToLower(fmt.Sprintf("%v", v))
-										if valStr == "error" || valStr == "fatal" {
-											isErr = true
-											isWarn = false
-										} else if valStr == "warn" || valStr == "warning" {
-											isWarn = true
-											isErr = false
-										} else {
-											// If the level is info, debug, etc, it is NOT an error or warning
-											isErr = false
-											isWarn = false
-										}
-										break
-									}
-								}
-
-								var jsonParts []string
-								for _, k := range jsonKeys {
-									if val, ok := jsonLog[k]; ok {
-										// format as key=value
-										valStr := fmt.Sprintf("%v", val)
-										// if val has spaces, quote it
-										if strings.Contains(valStr, " ") {
-											jsonParts = append(jsonParts, fmt.Sprintf("%s=\"%s\"", k, valStr))
-										} else {
-											jsonParts = append(jsonParts, fmt.Sprintf("%s=%s", k, valStr))
-										}
-									}
-								}
-								if len(jsonParts) > 0 {
-									displayMsg = strings.Join(jsonParts, " ")
-								}
-							}
-						}
-
 						logs = append(logs, LogEntry{
 							PodName:    pod.Name,
-							Message:    displayMsg,
+							Message:    line,
 							RawMessage: line,
 							IsError:    isErr,
 							IsWarn:     isWarn,
